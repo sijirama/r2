@@ -1,5 +1,7 @@
 # r2 — local Cloudflare R2 file manager
 
+![image](https://media.sijibomi.com/blob/repos/r2/Screenshot%20from%202026-06-03%2023-57-48.png)
+
 A single Go binary that serves a local web UI for managing your Cloudflare R2
 buckets and files. Local-first: your credentials live in a `.env` in this repo
 and never leave your machine. Control it from anywhere in your terminal with the
