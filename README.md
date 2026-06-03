@@ -14,8 +14,9 @@ r2 logs       # tail the server log
 ```
 
 What you can do in the UI: list buckets, create/delete buckets, browse files by
-folder, upload files (multi-select), create text files, delete files, download
-locally, and copy a shareable link for any object.
+folder (click in and out via the breadcrumb), create folders, upload files
+(multi-select), create text files, delete files, download locally, open a file
+on its own page to preview it (images/PDF/text) and copy its shareable link.
 
 ## Setup
 

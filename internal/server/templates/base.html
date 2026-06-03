@@ -1,0 +1,48 @@
+{{define "base.html"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{.Title}} · r2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Caveat:wght@600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      fontFamily: {
+        sans: ['Manrope','ui-sans-serif','system-ui','sans-serif'],
+        caveat: ['Caveat','cursive'],
+        mono: ['JetBrains Mono','ui-monospace','monospace'],
+      },
+    } } }
+  </script>
+  <style type="text/tailwindcss">
+    @layer base { body { @apply bg-white text-zinc-900 antialiased; } }
+    @layer components {
+      .btn        { @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-zinc-200 bg-white text-[13px] font-medium text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 transition; }
+      .btn-dark   { @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-transparent bg-zinc-900 text-[13px] font-medium text-white hover:bg-zinc-800 transition; }
+      .btn-danger { @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-rose-200 bg-white text-[13px] font-medium text-rose-600 hover:bg-rose-50 transition; }
+      .input      { @apply h-8 px-2.5 rounded-md border border-zinc-200 bg-white text-[13px] placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/5; }
+      .crumb      { @apply text-zinc-400 hover:text-orange-600 transition-colors; }
+      .row        { @apply flex items-center gap-3 -mx-2 px-2 h-11 rounded-md hover:bg-zinc-50 transition-colors; }
+      .dot        { @apply h-1.5 w-1.5 rounded-full shrink-0; }
+      .extag      { @apply font-mono text-[10px] uppercase tracking-wide text-zinc-400; }
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 9999px; border: 3px solid transparent; background-clip: content-box; }
+  </style>
+</head>
+<body class="font-sans">
+  <main class="max-w-3xl w-full mx-auto px-6 py-12 md:py-16">
+    {{block "content" .}}{{end}}
+  </main>
+
+  <div id="toast" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-lg shadow-lg text-[13px] bg-zinc-900 text-white"></div>
+  <script>
+    function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),2400);}
+    function copyText(v){navigator.clipboard.writeText(v).then(()=>toast('copied to clipboard'));}
+    function confirmSubmit(f,m){if(confirm(m)){f.submit();}return false;}
+  </script>
+</body>
+</html>{{end}}

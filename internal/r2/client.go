@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -166,6 +167,22 @@ func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	return err
 }
 
+// Head returns metadata for a single object.
+func (c *Client) Head(ctx context.Context, bucket, key string) (*Object, string, error) {
+	out, err := c.s3.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	mod := ""
+	if out.LastModified != nil {
+		mod = out.LastModified.Format(time.RFC3339)
+	}
+	return &Object{Key: key, Size: aws.ToInt64(out.ContentLength), Modified: mod}, aws.ToString(out.ContentType), nil
+}
+
 // Download returns the object body and content type; caller must close the body.
 func (c *Client) Download(ctx context.Context, bucket, key string) (io.ReadCloser, string, error) {
 	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
@@ -226,9 +243,15 @@ func (c *Client) publicHost(ctx context.Context, bucket string) string {
 func (c *Client) fetchPublicHost(ctx context.Context, bucket string) string {
 	// Prefer a connected custom domain, fall back to the managed r2.dev domain.
 	if h := c.customDomain(ctx, bucket); h != "" {
+		log.Printf("link: bucket %q -> custom domain %q", bucket, h)
 		return h
 	}
-	return c.managedDomain(ctx, bucket)
+	if h := c.managedDomain(ctx, bucket); h != "" {
+		log.Printf("link: bucket %q -> r2.dev domain %q (no enabled custom domain found)", bucket, h)
+		return h
+	}
+	log.Printf("link: bucket %q -> private (no public domain), will presign", bucket)
+	return ""
 }
 
 func (c *Client) managedDomain(ctx context.Context, bucket string) string {
@@ -258,21 +281,31 @@ func (c *Client) customDomain(ctx context.Context, bucket string) string {
 				Enabled bool   `json:"enabled"`
 				Status  struct {
 					Ownership string `json:"ownership"`
+					SSL       string `json:"ssl"`
 				} `json:"status"`
 			} `json:"domains"`
 		} `json:"result"`
 	}
 	path := fmt.Sprintf("/accounts/%s/r2/buckets/%s/domains/custom", c.cfg.AccountID, bucket)
 	if err := c.cfGet(ctx, path, &resp); err != nil {
+		log.Printf("link: custom-domain lookup for %q failed: %v", bucket, err)
 		return ""
 	}
 	if !resp.Success {
 		return ""
 	}
+	// A domain is usable if it's enabled OR Cloudflare reports ownership active.
+	// Different accounts/states report these slightly differently, so be lenient.
 	for _, d := range resp.Result.Domains {
-		if d.Enabled && d.Domain != "" {
+		if d.Domain == "" {
+			continue
+		}
+		if d.Enabled || strings.EqualFold(d.Status.Ownership, "active") {
 			return d.Domain
 		}
+	}
+	if len(resp.Result.Domains) > 0 {
+		log.Printf("link: bucket %q has %d custom domain(s) but none enabled/active yet", bucket, len(resp.Result.Domains))
 	}
 	return ""
 }

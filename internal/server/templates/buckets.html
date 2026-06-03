@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="flex items-end justify-between gap-4 mb-1">
+  <h1 class="text-2xl font-bold tracking-tight lowercase">buckets</h1>
+  <form method="post" action="/buckets/new" class="flex items-center gap-2">
+    <input name="name" placeholder="new-bucket" required class="input w-36" />
+    <button class="btn-dark">create</button>
+  </form>
+</div>
+<p class="font-caveat text-xl text-orange-500/90">everything you've stashed in r2</p>
+
+<div class="mt-9">
+  {{if .Buckets}}
+  <div class="text-[11px] uppercase tracking-wider text-zinc-300 mb-1 px-2">{{len .Buckets}} bucket{{if ne (len .Buckets) 1}}s{{end}}</div>
+  <div class="divide-y divide-zinc-100">
+    {{range .Buckets}}
+    <div class="row group">
+      <span class="dot bg-orange-400"></span>
+      <a href="/b/{{.Name}}" class="flex-1 min-w-0 flex items-baseline gap-2.5">
+        <span class="font-semibold text-zinc-800 group-hover:text-orange-700 transition-colors truncate">{{.Name}}</span>
+      </a>
+      <span class="text-xs text-zinc-400 hidden sm:block">{{.Created}}</span>
+      <form method="post" action="/buckets/delete" onsubmit="return confirmSubmit(this,'delete bucket “{{.Name}}”? it must be empty.')">
+        <input type="hidden" name="bucket" value="{{.Name}}">
+        <button class="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-rose-600 transition text-xs">delete</button>
+      </form>
+      <svg class="h-4 w-4 text-zinc-300 group-hover:text-orange-500 transition-colors" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5 12.5 10 7.5 15"/></svg>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="border border-dashed border-zinc-200 rounded-lg p-12 text-center">
+    <p class="text-sm text-zinc-500">no buckets yet</p>
+    <p class="text-xs text-zinc-400 mt-1">create one above to get started.</p>
+  </div>
+  {{end}}
+</div>
+{{end}}

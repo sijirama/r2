@@ -1,0 +1,105 @@
+{{define "content"}}
+<div class="flex items-start justify-between gap-4">
+  <nav class="min-w-0 flex items-center gap-1.5 text-sm flex-wrap">
+    <a href="/" class="crumb">buckets</a>
+    {{$n := len .Crumbs}}
+    {{range $i, $c := .Crumbs}}
+      <span class="text-zinc-300">/</span>
+      {{if lt $i (sub $n 1)}}<a href="{{$c.URL}}" class="crumb">{{$c.Label}}</a>
+      {{else}}<span class="text-zinc-900 font-semibold truncate">{{$c.Label}}</span>{{end}}
+    {{end}}
+  </nav>
+  <div class="flex items-center gap-2 shrink-0">
+    <form id="uploadForm" method="post" action="/b/{{.Bucket}}/upload" enctype="multipart/form-data" class="hidden">
+      <input type="hidden" name="prefix" value="{{.Prefix}}">
+      <input id="fileInput" type="file" name="file" multiple onchange="this.form.submit()">
+    </form>
+    <button onclick="document.getElementById('fileInput').click()" class="btn-dark">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10M10 3 6.5 6.5M10 3l3.5 3.5M4 16.5h12"/></svg>
+      upload
+    </button>
+    <button onclick="document.getElementById('newFolderDialog').showModal()" class="btn">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.75 5.75A1.5 1.5 0 0 1 4.25 4.25h3l1.5 1.75h6.5a1 1 0 0 1 1 1v7.25a1.5 1.5 0 0 1-1.5 1.5H4.25a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M10 9v4M8 11h4"/></svg>
+      folder
+    </button>
+    <button onclick="document.getElementById('newFileDialog').showModal()" class="btn">create</button>
+  </div>
+</div>
+
+<p class="mt-6 text-xs text-zinc-400">
+  {{.FileCount}} file{{if ne .FileCount 1}}s{{end}}
+  {{if .Folders}} · {{len .Folders}} folder{{if ne (len .Folders) 1}}s{{end}}{{end}}
+  {{if .Files}} · {{.TotalSize}}{{end}}
+</p>
+
+<div class="mt-3">
+  {{if and (not .Folders) (not .Files)}}
+    <div class="border border-dashed border-zinc-200 rounded-lg p-12 text-center">
+      <p class="text-sm text-zinc-500">this folder is empty</p>
+      <p class="text-xs text-zinc-400 mt-1">upload a file or create one to get started.</p>
+    </div>
+  {{else}}
+  <div class="divide-y divide-zinc-100">
+    {{range .Folders}}
+    <a href="{{.URL}}" class="row group">
+      <span class="dot bg-orange-400"></span>
+      <span class="flex-1 min-w-0 font-semibold text-zinc-800 group-hover:text-orange-700 transition-colors truncate">{{.Name}}/</span>
+      <svg class="h-4 w-4 text-zinc-300 group-hover:text-orange-500 transition-colors" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 5 12.5 10 7.5 15"/></svg>
+    </a>
+    {{end}}
+
+    {{range .Files}}
+    <div class="row group">
+      <span class="dot {{.Cat.Dot}}"></span>
+      <a href="{{.URL}}" class="flex-1 min-w-0 flex items-baseline gap-2.5">
+        <span class="font-medium text-zinc-800 group-hover:text-orange-700 transition-colors truncate">{{.Name}}</span>
+        {{if .Ext}}<span class="extag shrink-0">{{.Ext}}</span>{{end}}
+      </a>
+      <span class="text-xs text-zinc-400 tabular-nums shrink-0">{{.Size}}</span>
+      <span class="text-xs text-zinc-300 hidden md:block shrink-0 w-40 text-right">{{.Modified}}</span>
+      <form method="post" action="/b/{{$.Bucket}}/delete" onsubmit="return confirmSubmit(this,'delete “{{.Name}}”?')">
+        <input type="hidden" name="key" value="{{.Key}}">
+        <input type="hidden" name="prefix" value="{{$.Prefix}}">
+        <button title="delete" class="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-rose-600 transition text-xs">delete</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<dialog id="newFolderDialog" class="rounded-xl p-0 backdrop:bg-zinc-900/20 w-full max-w-md shadow-xl border border-zinc-200">
+  <form method="post" action="/b/{{.Bucket}}/newfolder">
+    <input type="hidden" name="prefix" value="{{.Prefix}}">
+    <div class="px-5 pt-5">
+      <h3 class="font-semibold text-zinc-900 lowercase">create a folder</h3>
+      <p class="text-xs text-zinc-400 mt-0.5">created inside the current folder.</p>
+    </div>
+    <div class="p-5">
+      <input name="name" placeholder="images" required class="input w-full" autofocus>
+    </div>
+    <div class="px-5 pb-5 flex justify-end gap-2">
+      <button type="button" onclick="document.getElementById('newFolderDialog').close()" class="btn">cancel</button>
+      <button class="btn-dark">create folder</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="newFileDialog" class="rounded-xl p-0 backdrop:bg-zinc-900/20 w-full max-w-md shadow-xl border border-zinc-200">
+  <form method="post" action="/b/{{.Bucket}}/newfile">
+    <input type="hidden" name="prefix" value="{{.Prefix}}">
+    <div class="px-5 pt-5">
+      <h3 class="font-semibold text-zinc-900 lowercase">create a text file</h3>
+      <p class="text-xs text-zinc-400 mt-0.5">saved into the current folder.</p>
+    </div>
+    <div class="p-5 space-y-2.5">
+      <input name="name" placeholder="notes.txt" required class="input w-full">
+      <textarea name="content" rows="6" placeholder="file contents…" class="w-full p-2.5 rounded-md border border-zinc-200 text-[13px] font-mono focus:outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/5"></textarea>
+    </div>
+    <div class="px-5 pb-5 flex justify-end gap-2">
+      <button type="button" onclick="document.getElementById('newFileDialog').close()" class="btn">cancel</button>
+      <button class="btn-dark">create file</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
