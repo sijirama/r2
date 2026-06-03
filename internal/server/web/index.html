@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>R2 File Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: { mono: ['ui-monospace','SFMono-Regular','Menlo','monospace'] } } } }
+  </script>
+</head>
+<body class="h-full bg-zinc-950 text-zinc-100 font-mono text-sm">
+  <div class="flex h-full">
+    <!-- Sidebar: buckets -->
+    <aside class="w-72 shrink-0 border-r border-zinc-800 flex flex-col">
+      <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+        <span class="font-semibold tracking-tight text-zinc-300">buckets</span>
+        <button id="newBucketBtn" class="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700">+ new</button>
+      </div>
+      <div id="bucketList" class="flex-1 overflow-auto p-2 space-y-1"></div>
+      <div class="px-4 py-2 border-t border-zinc-800 text-[11px] text-zinc-500" id="status">ready</div>
+    </aside>
+
+    <!-- Main: objects -->
+    <main class="flex-1 flex flex-col min-w-0">
+      <header class="px-5 py-3 border-b border-zinc-800 flex items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <div id="crumbs" class="truncate text-zinc-400">select a bucket</div>
+        </div>
+        <button id="uploadBtn" class="hidden text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500">upload</button>
+        <button id="newFileBtn" class="hidden text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700">new file</button>
+        <button id="refreshBtn" class="hidden text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700">refresh</button>
+        <input id="fileInput" type="file" multiple class="hidden" />
+      </header>
+      <div id="objectArea" class="flex-1 overflow-auto p-2">
+        <div class="text-zinc-600 p-8 text-center">no bucket selected</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- toast -->
+  <div id="toast" class="hidden fixed bottom-4 right-4 px-4 py-2 rounded bg-zinc-800 border border-zinc-700 shadow-lg max-w-md break-words"></div>
+
+  <script>
+  const state = { bucket: null, prefix: "" };
+  const $ = (id) => document.getElementById(id);
+
+  function setStatus(t) { $("status").textContent = t; }
+  function toast(msg, ok = true) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.className = "fixed bottom-4 right-4 px-4 py-2 rounded shadow-lg max-w-md break-words border " +
+      (ok ? "bg-emerald-900/80 border-emerald-700 text-emerald-100" : "bg-red-900/80 border-red-700 text-red-100");
+    el.classList.remove("hidden");
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.add("hidden"), 3500);
+  }
+
+  async function api(method, url, body, isForm) {
+    const opts = { method };
+    if (body && isForm) opts.body = body;
+    else if (body) { opts.headers = { "Content-Type": "application/json" }; opts.body = JSON.stringify(body); }
+    const res = await fetch(url, opts);
+    const ct = res.headers.get("content-type") || "";
+    const data = ct.includes("json") ? await res.json() : await res.text();
+    if (!res.ok) throw new Error((data && data.error) || res.statusText);
+    return data;
+  }
+
+  function fmtSize(n) {
+    if (n < 1024) return n + " B";
+    const u = ["KB","MB","GB","TB"]; let i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+    return n.toFixed(1) + " " + u[i];
+  }
+
+  // ---- buckets ----
+  async function loadBuckets() {
+    try {
+      const { buckets } = await api("GET", "/api/buckets");
+      const list = $("bucketList");
+      list.innerHTML = "";
+      if (!buckets.length) list.innerHTML = '<div class="text-zinc-600 text-xs p-2">no buckets</div>';
+      buckets.forEach((b) => {
+        const row = document.createElement("div");
+        row.className = "group flex items-center justify-between px-2 py-1.5 rounded hover:bg-zinc-800 cursor-pointer " +
+          (state.bucket === b.name ? "bg-zinc-800 text-emerald-400" : "text-zinc-300");
+        const name = document.createElement("span");
+        name.className = "truncate";
+        name.textContent = b.name;
+        name.onclick = () => openBucket(b.name);
+        const del = document.createElement("button");
+        del.className = "opacity-0 group-hover:opacity-100 text-xs text-red-400 hover:text-red-300 ml-2";
+        del.textContent = "del";
+        del.onclick = (e) => { e.stopPropagation(); deleteBucket(b.name); };
+        row.append(name, del);
+        list.appendChild(row);
+      });
+      setStatus(buckets.length + " bucket(s)");
+    } catch (e) { toast(e.message, false); setStatus("error"); }
+  }
+
+  async function deleteBucket(name) {
+    if (!confirm(`delete bucket "${name}"? it must be empty.`)) return;
+    try {
+      await api("DELETE", `/api/buckets/${encodeURIComponent(name)}`);
+      if (state.bucket === name) { state.bucket = null; renderEmpty(); }
+      toast(`deleted ${name}`);
+      loadBuckets();
+    } catch (e) { toast(e.message, false); }
+  }
+
+  $("newBucketBtn").onclick = async () => {
+    const name = prompt("new bucket name:");
+    if (!name) return;
+    try { await api("POST", "/api/buckets", { name }); toast(`created ${name}`); loadBuckets(); }
+    catch (e) { toast(e.message, false); }
+  };
+
+  // ---- objects ----
+  function renderEmpty() {
+    $("crumbs").textContent = "select a bucket";
+    $("objectArea").innerHTML = '<div class="text-zinc-600 p-8 text-center">no bucket selected</div>';
+    ["uploadBtn","newFileBtn","refreshBtn"].forEach(id => $(id).classList.add("hidden"));
+  }
+
+  async function openBucket(name, prefix = "") {
+    state.bucket = name; state.prefix = prefix;
+    ["uploadBtn","newFileBtn","refreshBtn"].forEach(id => $(id).classList.remove("hidden"));
+    loadBuckets();
+    await loadObjects();
+  }
+
+  function renderCrumbs() {
+    const c = $("crumbs"); c.innerHTML = "";
+    const mk = (label, pfx) => {
+      const a = document.createElement("button");
+      a.className = "text-zinc-300 hover:text-emerald-400";
+      a.textContent = label;
+      a.onclick = () => { state.prefix = pfx; loadObjects(); };
+      return a;
+    };
+    c.appendChild(mk(state.bucket, ""));
+    let acc = "";
+    state.prefix.split("/").filter(Boolean).forEach((seg) => {
+      acc += seg + "/";
+      c.append(document.createTextNode(" / "), mk(seg, acc));
+    });
+  }
+
+  async function loadObjects() {
+    renderCrumbs();
+    const area = $("objectArea");
+    area.innerHTML = '<div class="text-zinc-600 p-8 text-center">loading…</div>';
+    try {
+      const data = await api("GET", `/api/buckets/${encodeURIComponent(state.bucket)}/objects?prefix=${encodeURIComponent(state.prefix)}`);
+      area.innerHTML = "";
+      if (state.prefix) {
+        const up = state.prefix.replace(/[^/]+\/$/, "");
+        area.appendChild(rowEl("⤴ ..", "text-zinc-400", () => { state.prefix = up; loadObjects(); }));
+      }
+      (data.prefixes || []).forEach((p) => {
+        const label = p.slice(state.prefix.length).replace(/\/$/, "");
+        area.appendChild(rowEl("📁 " + label, "text-sky-300", () => { state.prefix = p; loadObjects(); }));
+      });
+      (data.objects || []).forEach((o) => area.appendChild(objectRow(o)));
+      if (!data.prefixes.length && !data.objects.length && !state.prefix)
+        area.innerHTML = '<div class="text-zinc-600 p-8 text-center">empty bucket</div>';
+      setStatus(`${data.objects.length} file(s), ${data.prefixes.length} folder(s)`);
+    } catch (e) { area.innerHTML = ""; toast(e.message, false); }
+  }
+
+  function rowEl(label, cls, onclick) {
+    const d = document.createElement("div");
+    d.className = "px-3 py-2 rounded hover:bg-zinc-800 cursor-pointer " + cls;
+    d.textContent = label;
+    d.onclick = onclick;
+    return d;
+  }
+
+  function objectRow(o) {
+    const name = o.key.slice(state.prefix.length);
+    const row = document.createElement("div");
+    row.className = "group flex items-center gap-3 px-3 py-2 rounded hover:bg-zinc-800";
+    const nm = document.createElement("span");
+    nm.className = "flex-1 truncate text-zinc-200";
+    nm.textContent = "📄 " + name;
+    const meta = document.createElement("span");
+    meta.className = "text-xs text-zinc-500 shrink-0";
+    meta.textContent = fmtSize(o.size);
+    const actions = document.createElement("span");
+    actions.className = "flex gap-2 opacity-0 group-hover:opacity-100 shrink-0";
+    actions.append(
+      btn("link", "text-emerald-400", () => copyLink(o.key)),
+      btn("get", "text-sky-400", () => downloadObj(o.key)),
+      btn("del", "text-red-400", () => deleteObj(o.key)),
+    );
+    row.append(nm, meta, actions);
+    return row;
+  }
+
+  function btn(label, cls, onclick) {
+    const b = document.createElement("button");
+    b.className = "text-xs hover:underline " + cls;
+    b.textContent = label;
+    b.onclick = onclick;
+    return b;
+  }
+
+  async function copyLink(key) {
+    try {
+      const link = await api("GET", `/api/buckets/${encodeURIComponent(state.bucket)}/link?key=${encodeURIComponent(key)}`);
+      await navigator.clipboard.writeText(link.url);
+      toast(`copied ${link.type} link${link.expires ? " (" + link.expires + ")" : ""}`);
+    } catch (e) { toast(e.message, false); }
+  }
+
+  function downloadObj(key) {
+    window.location.href = `/api/buckets/${encodeURIComponent(state.bucket)}/download?key=${encodeURIComponent(key)}`;
+  }
+
+  async function deleteObj(key) {
+    if (!confirm(`delete "${key}"?`)) return;
+    try {
+      await api("DELETE", `/api/buckets/${encodeURIComponent(state.bucket)}/objects?key=${encodeURIComponent(key)}`);
+      toast("deleted");
+      loadObjects();
+    } catch (e) { toast(e.message, false); }
+  }
+
+  // header buttons
+  $("uploadBtn").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = async (e) => {
+    const files = e.target.files;
+    if (!files.length) return;
+    const fd = new FormData();
+    fd.append("prefix", state.prefix);
+    for (const f of files) fd.append("file", f);
+    try {
+      setStatus("uploading…");
+      const r = await api("POST", `/api/buckets/${encodeURIComponent(state.bucket)}/upload`, fd, true);
+      toast(`uploaded ${r.uploaded.length} file(s)`);
+      loadObjects();
+    } catch (err) { toast(err.message, false); }
+    finally { e.target.value = ""; }
+  };
+
+  $("newFileBtn").onclick = async () => {
+    const name = prompt("file name (relative to current folder):");
+    if (!name) return;
+    const content = prompt("file contents:", "") ?? "";
+    const key = state.prefix + name;
+    try {
+      await api("POST", `/api/buckets/${encodeURIComponent(state.bucket)}/newfile`, { key, content });
+      toast(`created ${name}`);
+      loadObjects();
+    } catch (e) { toast(e.message, false); }
+  };
+
+  $("refreshBtn").onclick = loadObjects;
+
+  loadBuckets();
+  </script>
+</body>
+</html>
